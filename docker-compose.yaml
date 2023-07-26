@@ -8,23 +8,33 @@ volumes:
   postgres_data:
 
 services:
-  my-app:
-    build:
-       context: .
-       dockerfile: Dockerfile
-    container_name: my-app
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: rabbitmq
+    container_name: 'rabbitmq'
     restart: always
     ports:
-      - "8000:8000"
-    deploy:
-        resources:
-            limits:
-              cpus: "0.1"
-              memory: 50M
+        - 5672:5672
+        - 8080:15672
+    volumes:
+        - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+        - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
     networks:
-      - my-network
+        - my-network
+    command: bash -c "sleep 10; rabbitmq-server;"
+
+  my-app:
+    build: .
+    container_name: my-app
+    restart: always
+    networks:
+        - my-network
+    ports:
+      - "8000:8000"
     depends_on:
       - postgres
+      - rabbitmq
+
   postgres:
     image: postgres:13.1
     container_name: postgres
@@ -34,7 +44,7 @@ services:
       POSTGRES_PASSWORD: admin
       POSTGRES_DB: postgres
     ports:
-      - "5432:5432"
+      - "5444:5432"
     deploy:
       resources:
         limits:
@@ -44,3 +54,15 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - my-network
+
+  consumer:
+    build: .
+    command: sh -c "
+      sleep 20 &&
+      python consumer.py"
+    restart: always
+    networks:
+        - my-network
+    depends_on:
+        - rabbitmq
+        - my-app
